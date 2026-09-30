@@ -1,0 +1,221 @@
+@page "/game"
+@inject GameStateService GameState
+@inject ChallengeService Challenges
+@inject DockerService Docker
+@inject CleanupService Cleanup
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Docker Dojo — Playing</PageTitle>
+
+@if (!GameState.IsRunning && !GameState.IsComplete)
+{
+    <div class="resume-banner">
+        <p>No active game. Head back to start one.</p>
+        <a class="btn btn-primary" href="/">Go to start →</a>
+    </div>
+}
+else
+{
+    <div class="game-header">
+        <div class="clock-box @(GameState.IsComplete ? "done" : "")">
+            <span class="clock-label">@(GameState.IsComplete ? "Final time" : "Elapsed")</span>
+            <span class="clock-value">@GameState.Elapsed.ToString(@"hh\:mm\:ss")</span>
+        </div>
+        <div class="progress-box">
+            <div class="progress-track">
+                <div class="progress-fill" style="width:@(ProgressPercent)%"></div>
+            </div>
+            <span class="progress-label">
+                @GameState.SolvedCount of @GameState.TotalChallenges solved
+                @if (GameState.HintedChallenges.Count > 0)
+                {
+                    <span class="penalty-label">· +@($"{GameState.TotalPenalty.TotalSeconds:0}")s hint penalty (@GameState.HintedChallenges.Count)</span>
+                }
+            </span>
+        </div>
+    </div>
+
+    @if (GameState.IsComplete)
+    {
+        <div class="complete-card">
+            <h2>🎉 @GameState.TeamName finished!</h2>
+            <p>You solved <b>@GameState.SolvedCount / @GameState.TotalChallenges</b> challenges in
+               <b>@GameState.Elapsed.ToString(@"hh\:mm\:ss")</b>.</p>
+            <div class="complete-actions">
+                <a class="btn btn-primary" href="/leaderboard">View leaderboard →</a>
+                <button class="btn btn-ghost" disabled="@_cleaning" @onclick="CleanupAndPlayAgain">
+                    @(_cleaning ? "Cleaning up…" : "Clean up & play again")
+                </button>
+            </div>
+            @if (_cleanupMsg is not null)
+            {
+                <div class="check-msg ok">@_cleanupMsg</div>
+            }
+        </div>
+    }
+
+    <div class="challenge-list">
+        @foreach (var c in Challenges.Challenges)
+        {
+            var solved = GameState.IsSolved(c.Id);
+            <article class="challenge-card @(solved ? "solved" : "")">
+                <header class="challenge-head">
+                    <span class="challenge-num">@(solved ? "✓" : $"#{c.Id}")</span>
+                    <h3>@c.Title</h3>
+                    @if (solved)
+                    {
+                        <span class="solved-tag">Solved @GameState.SolvedAt[c.Id].ToString(@"mm\:ss")</span>
+                    }
+                </header>
+
+                <p class="challenge-desc">@c.Description</p>
+
+                <div class="requirements">
+                    <span class="req-label">Requirements</span>
+                    <ul>
+                        @foreach (var r in c.Requirements)
+                        {
+                            <li>@r</li>
+                        }
+                    </ul>
+                </div>
+
+                @if (!solved && GameState.IsRunning)
+                {
+                    <div class="challenge-actions">
+                        <button class="btn btn-check" disabled="@_busy" @onclick="() => CheckAsync(c)">
+                            @(_checkingId == c.Id ? "Checking…" : "Check ✓")
+                        </button>
+                        <button class="btn btn-ghost" @onclick="() => ToggleHint(c.Id)">
+                            @if (_openHints.Contains(c.Id))
+                            {
+                                @:Hide hint
+                            }
+                            else if (GameState.HintedChallenges.Contains(c.Id))
+                            {
+                                @:Show hint
+                            }
+                            else
+                            {
+                                <text>💡 Reveal hint (+@($"{GameStateService.HintPenalty.TotalSeconds:0}")s penalty)</text>
+                            }
+                        </button>
+                    </div>
+
+                    @if (_openHints.Contains(c.Id))
+                    {
+                        <div class="hint-warning">
+                            ⚠️ Revealing this hint added @($"{GameStateService.HintPenalty.TotalSeconds:0}")s to your time.
+                        </div>
+                        <pre class="hint-box">@c.Hint</pre>
+                    }
+
+                    @if (_messages.TryGetValue(c.Id, out var msg))
+                    {
+                        <div class="check-msg @(msg.Success ? "ok" : "fail")">@msg.Message</div>
+                    }
+                }
+            </article>
+        }
+    </div>
+
+    @if (GameState.IsRunning)
+    {
+        <div class="give-up">
+            <button class="btn btn-danger-ghost" @onclick="GiveUp">End game early</button>
+        </div>
+    }
+}
+
+@code {
+    private readonly HashSet<int> _openHints = [];
+    private readonly Dictionary<int, ValidationResult> _messages = [];
+    private System.Threading.Timer? _timer;
+    private bool _busy;
+    private int? _checkingId;
+    private bool _cleaning;
+    private string? _cleanupMsg;
+
+    private int ProgressPercent =>
+        GameState.TotalChallenges == 0 ? 0 : (int)(100.0 * GameState.SolvedCount / GameState.TotalChallenges);
+
+    protected override void OnInitialized()
+    {
+        GameState.OnChange += OnGameChanged;
+        // Tick the clock once per second while a game is running.
+        _timer = new System.Threading.Timer(_ =>
+        {
+            if (GameState.IsRunning)
+                InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+    }
+
+    private void OnGameChanged() => InvokeAsync(StateHasChanged);
+
+    private void ToggleHint(int id)
+    {
+        if (!_openHints.Add(id))
+        {
+            _openHints.Remove(id);
+        }
+        else
+        {
+            // Revealing applies a one-time time penalty.
+            GameState.RevealHint(id);
+        }
+    }
+
+    private async Task CheckAsync(Challenge c)
+    {
+        _busy = true;
+        _checkingId = c.Id;
+        try
+        {
+            var result = await c.Validate(Docker);
+            _messages[c.Id] = result;
+            if (result.Success)
+                GameState.MarkSolved(c.Id);
+        }
+        catch (Exception ex)
+        {
+            _messages[c.Id] = new ValidationResult(false, $"Validation error: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+            _checkingId = null;
+        }
+    }
+
+    private void GiveUp()
+    {
+        GameState.GiveUp();
+    }
+
+    private async Task CleanupAndPlayAgain()
+    {
+        _cleaning = true;
+        _cleanupMsg = null;
+        try
+        {
+            var report = await Cleanup.CleanupAsync();
+            GameState.Reset();
+            Nav.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _cleanupMsg = $"Cleanup error: {ex.Message}";
+        }
+        finally
+        {
+            _cleaning = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        GameState.OnChange -= OnGameChanged;
+        _timer?.Dispose();
+    }
+}

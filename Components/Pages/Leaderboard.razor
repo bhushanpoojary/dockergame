@@ -1,0 +1,109 @@
+@page "/leaderboard"
+@inject LeaderboardService Board
+@inject GameStateService Game
+
+<PageTitle>Docker Dojo — Leaderboard</PageTitle>
+
+<section class="leaderboard">
+    <h1>🏆 Leaderboard</h1>
+
+    @if (Board.Ranked.Count == 0)
+    {
+        <p class="empty">No runs recorded yet. Be the first team to finish!</p>
+        <a class="btn btn-primary" href="/">Start a game →</a>
+    }
+    else
+    {
+        <table class="board-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Team</th>
+                    <th>Solved</th>
+                    <th>Time</th>
+                    <th>When</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    var rank = 1;
+                }
+                @foreach (var e in Board.Ranked)
+                {
+                    <tr class="@(rank <= 3 ? $"rank-{rank}" : "")">
+                        <td class="rank-cell">@Medal(rank)</td>
+                        <td>@e.TeamName</td>
+                        <td>@e.SolvedCount / @e.TotalChallenges</td>
+                        <td class="mono">@e.FormattedTime</td>
+                        <td class="when">@e.CompletedAt.ToLocalTime().ToString("g")</td>
+                        <td class="actions-cell">
+                            @if (_confirmingId == e.Id)
+                            {
+                                <span class="confirm-inline">
+                                    Delete?
+                                    <button class="btn-tiny danger" @onclick="() => Delete(e.Id)">Yes</button>
+                                    <button class="btn-tiny" @onclick="() => _confirmingId = null">No</button>
+                                </span>
+                            }
+                            else
+                            {
+                                <button class="btn-tiny" title="Delete entry" @onclick="() => _confirmingId = e.Id">🗑</button>
+                            }
+                        </td>
+                    </tr>
+                    rank++;
+                }
+            </tbody>
+        </table>
+
+        <div class="board-footer">
+            @if (!Game.IsRunning)
+            {
+                <a class="btn btn-primary" href="/">Play again →</a>
+            }
+            else
+            {
+                <a class="btn btn-primary" href="/game">Back to game →</a>
+            }
+
+            @if (_clearConfirm)
+            {
+                <span class="confirm-inline">
+                    Clear the entire leaderboard?
+                    <button class="btn btn-danger-ghost" @onclick="ClearAll">Yes, clear all</button>
+                    <button class="btn btn-ghost" @onclick="() => _clearConfirm = false">Cancel</button>
+                </span>
+            }
+            else
+            {
+                <button class="btn btn-danger-ghost" @onclick="() => _clearConfirm = true">Clear all</button>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private Guid? _confirmingId;
+    private bool _clearConfirm;
+
+    private void Delete(Guid id)
+    {
+        Board.Remove(id);
+        _confirmingId = null;
+    }
+
+    private void ClearAll()
+    {
+        Board.Clear();
+        _clearConfirm = false;
+    }
+
+    private static string Medal(int rank) => rank switch
+    {
+        1 => "🥇",
+        2 => "🥈",
+        3 => "🥉",
+        _ => rank.ToString()
+    };
+}

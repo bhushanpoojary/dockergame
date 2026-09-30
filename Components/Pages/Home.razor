@@ -1,0 +1,119 @@
+﻿@page "/"
+@inject GameStateService Game
+@inject ChallengeService Challenges
+@inject DockerService Docker
+@inject CleanupService Cleanup
+@inject NavigationManager Nav
+
+<PageTitle>Docker Dojo</PageTitle>
+
+@if (Game.IsRunning)
+{
+    <div class="resume-banner">
+        <p>A game is already in progress for <b>@Game.TeamName</b>.</p>
+        <a class="btn btn-primary" href="/game">Resume game →</a>
+    </div>
+}
+else
+{
+    <section class="hero">
+        <h1>🐳 Docker Dojo</h1>
+        <p class="hero-sub">
+            A hands-on Docker challenge for your team. Solve @Challenges.Challenges.Count real
+            tasks in your terminal — we verify each one live against Docker. The clock starts
+            when you begin and stops when every challenge is green.
+        </p>
+
+        <div class="start-card">
+            <label for="team">Team name</label>
+            <input id="team" class="team-input" @bind="_teamName" @bind:event="oninput"
+                   placeholder="e.g. The Whale Riders" maxlength="40" />
+
+            @if (_dockerOk == false)
+            {
+                <div class="alert alert-warn">
+                    ⚠️ Docker doesn't seem reachable. Make sure Docker Desktop / the daemon is running.
+                </div>
+            }
+
+            <button class="btn btn-start" disabled="@(string.IsNullOrWhiteSpace(_teamName))" @onclick="StartAsync">
+                Start the clock ▶
+            </button>
+
+            <div class="reset-row">
+                <button class="btn btn-ghost" disabled="@_cleaning" @onclick="ResetEnvironmentAsync">
+                    @(_cleaning ? "Cleaning up…" : "🧹 Reset environment for next team")
+                </button>
+                @if (_cleanupMsg is not null)
+                {
+                    <span class="reset-msg">@_cleanupMsg</span>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="overview">
+        <h2>What you'll tackle</h2>
+        <ol class="challenge-preview">
+            @foreach (var c in Challenges.Challenges)
+            {
+                <li>
+                    <span class="chip">#@c.Id</span>
+                    <span class="preview-title">@c.Title</span>
+                    <span class="preview-desc">@c.Description</span>
+                </li>
+            }
+        </ol>
+    </section>
+
+    <section class="rules">
+        <h2>How it works</h2>
+        <ul>
+            <li>Open your own terminal (PowerShell, WSL, or bash) with Docker available.</li>
+            <li>Read each task, run the Docker commands to satisfy the requirements.</li>
+            <li>Hit <b>Check</b> and the game inspects live Docker state to verify it.</li>
+            <li>Stuck? Reveal the hint — but the clock keeps ticking!</li>
+            <li>Finish all @Challenges.Challenges.Count to land on the leaderboard.</li>
+        </ul>
+    </section>
+}
+
+@code {
+    private string _teamName = string.Empty;
+    private bool? _dockerOk;
+    private bool _cleaning;
+    private string? _cleanupMsg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dockerOk = await Docker.IsAvailableAsync();
+    }
+
+    private async Task StartAsync()
+    {
+        _dockerOk = await Docker.IsAvailableAsync();
+        Game.StartGame(_teamName);
+        Nav.NavigateTo("/game");
+    }
+
+    private async Task ResetEnvironmentAsync()
+    {
+        _cleaning = true;
+        _cleanupMsg = null;
+        try
+        {
+            var report = await Cleanup.CleanupAsync();
+            _cleanupMsg = report.Any
+                ? $"Removed: {string.Join(", ", report.Removed)}."
+                : "Nothing to clean — environment is already fresh.";
+        }
+        catch (Exception ex)
+        {
+            _cleanupMsg = $"Cleanup error: {ex.Message}";
+        }
+        finally
+        {
+            _cleaning = false;
+        }
+    }
+}

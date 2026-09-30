@@ -1,0 +1,43 @@
+﻿@inherits LayoutComponentBase
+@inject GameStateService Game
+@implements IDisposable
+
+<div class="app-shell">
+    <header class="topbar">
+        <a class="brand" href="/">
+            <span class="brand-logo">🐳</span>
+            <span class="brand-text">Docker <b>Dojo</b></span>
+        </a>
+        <nav class="topnav">
+            <a href="/">Play</a>
+            <a href="/leaderboard">Leaderboard</a>
+        </nav>
+        @if (Game.IsRunning)
+        {
+            <div class="topbar-timer">
+                <span class="timer-team">@Game.TeamName</span>
+                <span class="timer-clock">@Game.Elapsed.ToString(@"hh\:mm\:ss")</span>
+                <span class="timer-progress">@Game.SolvedCount / @Game.TotalChallenges</span>
+            </div>
+        }
+    </header>
+
+    <main class="content">
+        @Body
+    </main>
+
+    <footer class="footer">
+        Hands-on Docker challenges &middot; solve them all as fast as you can
+    </footer>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    protected override void OnInitialized() => Game.OnChange += StateHasChanged;
+    public void Dispose() => Game.OnChange -= StateHasChanged;
+}
