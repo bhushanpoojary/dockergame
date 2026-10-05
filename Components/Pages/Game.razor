@@ -30,7 +30,7 @@ else
                 @GameState.SolvedCount of @GameState.TotalChallenges solved
                 @if (GameState.HintedChallenges.Count > 0)
                 {
-                    <span class="penalty-label">· +@($"{GameState.TotalPenalty.TotalSeconds:0}")s hint penalty (@GameState.HintedChallenges.Count)</span>
+                    <span class="penalty-label">· +@($"{GameState.TotalPenalty.TotalMinutes:0}") min hint penalty (@GameState.HintedChallenges.Count)</span>
                 }
             </span>
         </div>
@@ -98,7 +98,7 @@ else
                             }
                             else
                             {
-                                <text>💡 Reveal hint (+@($"{GameStateService.HintPenalty.TotalSeconds:0}")s penalty)</text>
+                                <text>💡 Reveal hint (+@($"{GameStateService.HintPenalty.TotalMinutes:0}") min penalty)</text>
                             }
                         </button>
                     </div>
@@ -106,7 +106,7 @@ else
                     @if (_openHints.Contains(c.Id))
                     {
                         <div class="hint-warning">
-                            ⚠️ Revealing this hint added @($"{GameStateService.HintPenalty.TotalSeconds:0}")s to your time.
+                            ⚠️ Revealing this hint added @($"{GameStateService.HintPenalty.TotalMinutes:0}") min to your time.
                         </div>
                         <pre class="hint-box">@c.Hint</pre>
                     }

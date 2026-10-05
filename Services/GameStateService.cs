@@ -27,7 +27,7 @@ public class GameStateService
     public HashSet<int> HintedChallenges { get; } = new();
 
     /// <summary>Time added to the clock for each hint revealed.</summary>
-    public static readonly TimeSpan HintPenalty = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan HintPenalty = TimeSpan.FromMinutes(5);
 
     public TimeSpan TotalPenalty => HintedChallenges.Count * HintPenalty;
 
